@@ -1,0 +1,21 @@
+# Large source data (not needed for web deployment)
+sst.mnmean.nc
+sst_animated_map.html
+public/data/sst_data.json
+public/data/sst_data.json.gz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Old Firebase build artifacts (kept for reference)
+# public/data/sst_data.json
+# public/data/sst_data.json.gz
+
+# Node
+node_modules/

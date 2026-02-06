@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sea Surface Temperature — NOAA ERSST v5</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="anonymous" />
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-dark: #0a0e1a;
+            --bg-panel: rgba(10, 14, 26, 0.88);
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: #4fc3f7;
+            --accent-glow: rgba(79, 195, 247, 0.3);
+            --warm: #ff7043;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --radius: 12px;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ── Map ────────────────────────────────────── */
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 0;
+        }
+
+        .leaflet-canvas-overlay {
+            pointer-events: none;
+            mix-blend-mode: normal;
+        }
+
+        /* ── Header Panel ───────────────────────────── */
+        #header {
+            position: absolute;
+            top: 16px; left: 16px;
+            z-index: 1000;
+            background: var(--bg-panel);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            max-width: 340px;
+        }
+
+        #header h1 {
+            font-size: 17px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        #header .subtitle {
+            font-size: 12px;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+
+        /* ── Legend ──────────────────────────────────── */
+        #legend {
+            position: absolute;
+            top: 16px; right: 16px;
+            z-index: 1000;
+            background: var(--bg-panel);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            width: 70px;
+        }
+
+        #legend .legend-title {
+            font-size: 11px;
+            font-weight: 500;
+            text-align: center;
+            margin-bottom: 8px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #legend-bar {
+            width: 24px;
+            height: 220px;
+            border-radius: 4px;
+            margin: 0 auto;
+        }
+
+        #legend .legend-inner {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        #legend .legend-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 220px;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        /* ── Controls ───────────────────────────────── */
+        #controls {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: var(--bg-panel);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 24px 14px;
+            min-width: 520px;
+            max-width: 90vw;
+        }
+
+        #date-display {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 12px;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.5px;
+        }
+
+        #date-display .year {
+            color: var(--accent);
+        }
+
+        /* Slider */
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .slider-row .label {
+            font-size: 11px;
+            color: var(--text-dim);
+            min-width: 32px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.1);
+            cursor: pointer;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+            transition: transform 0.1s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        #time-slider::-webkit-slider-runnable-track {
+            background: linear-gradient(to right, #1565c0, var(--accent), var(--warm));
+            height: 6px;
+            border-radius: 3px;
+        }
+
+        /* Buttons */
+        .btn-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-play {
+            background: var(--accent);
+            color: #000;
+            font-size: 14px;
+            padding: 8px 20px;
+        }
+
+        .btn-play:hover { background: #29b6f6; }
+
+        .btn-play.playing {
+            background: var(--warm);
+        }
+
+        .btn-play.playing:hover { background: #ff5722; }
+
+        .btn-sm {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text);
+            font-size: 12px;
+            padding: 6px 14px;
+        }
+
+        .btn-sm:hover {
+            background: rgba(255,255,255,0.12);
+        }
+
+        .btn-sm.active {
+            background: rgba(79,195,247,0.15);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .divider {
+            width: 1px;
+            height: 20px;
+            background: rgba(255,255,255,0.1);
+            margin: 0 4px;
+        }
+
+        /* Opacity row */
+        .opacity-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        #opacity-slider {
+            width: 100px;
+            height: 4px;
+        }
+
+        /* ── Hover Tooltip ──────────────────────────── */
+        #tooltip {
+            position: absolute;
+            z-index: 1001;
+            background: rgba(0,0,0,0.92);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            pointer-events: none;
+            display: none;
+            border: 1px solid rgba(255,255,255,0.1);
+            white-space: nowrap;
+        }
+
+        #tooltip .temp {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        #tooltip .coord {
+            color: var(--text-dim);
+            font-size: 11px;
+            margin-top: 2px;
+        }
+
+        /* ── Loading Screen ─────────────────────────── */
+        #loading {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.6s ease;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #loading h2 {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #fff;
+        }
+
+        #loading .sub {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 24px;
+        }
+
+        .progress-container {
+            width: 300px;
+            height: 6px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #1565c0, var(--accent));
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.2s ease;
+        }
+
+        #load-status {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Responsive ─────────────────────────────── */
+        @media (max-width: 600px) {
+            #controls { min-width: 0; width: calc(100vw - 32px); padding: 14px 16px 10px; }
+            #date-display { font-size: 22px; }
+            #header { max-width: calc(100vw - 100px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loading">
+        <h2>Sea Surface Temperature</h2>
+        <div class="sub">NOAA ERSST v5 &middot; 1854–2025</div>
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div id="load-status">Initializing...</div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Header -->
+    <div id="header">
+        <h1>Sea Surface Temperature</h1>
+        <div class="subtitle">NOAA ERSST v5 Monthly Mean &middot; 2&deg; Global Grid<br>171 years of ocean temperature data</div>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+        <div class="legend-title">SST &deg;C</div>
+        <div class="legend-inner">
+            <canvas id="legend-bar" width="24" height="220"></canvas>
+            <div class="legend-labels">
+                <span>32&deg;</span>
+                <span>24&deg;</span>
+                <span>16&deg;</span>
+                <span>8&deg;</span>
+                <span>0&deg;</span>
+                <span>-2&deg;</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls">
+        <div id="date-display"></div>
+        <div class="slider-row">
+            <span class="label">1854</span>
+            <input type="range" id="time-slider" min="0" max="100" value="0">
+            <span class="label">2025</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-play" id="btn-play">&#9654; Play</button>
+            <div class="divider"></div>
+            <button class="btn btn-sm" id="btn-step-back" title="Previous frame">&#9664;&#9664;</button>
+            <button class="btn btn-sm" id="btn-step-fwd" title="Next frame">&#9654;&#9654;</button>
+            <div class="divider"></div>
+            <button class="btn btn-sm" id="btn-speed" data-idx="1">1&times;</button>
+            <button class="btn btn-sm" id="btn-loop" title="Loop">&#8635; Loop</button>
+        </div>
+        <div class="opacity-row">
+            <span>Overlay</span>
+            <input type="range" id="opacity-slider" min="5" max="100" value="80">
+            <span id="opacity-val">80%</span>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="tooltip">
+        <div class="temp"></div>
+        <div class="coord"></div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin="anonymous"></script>
+
+    <script>
+    // ================================================================
+    //  CONFIGURATION
+    // ================================================================
+    const DATA_URL = 'data/sst_data.bin';
+    const META_URL = 'data/metadata.json';
+    const SST_MIN = -2;
+    const SST_MAX = 32;
+    const NODATA = 255;
+    const SPEEDS = [0.5, 1, 2, 4, 8, 16];
+    const MONTH_NAMES = ['January','February','March','April','May','June',
+                         'July','August','September','October','November','December'];
+
+    // ================================================================
+    //  COLOR RAMP — RdBu reversed (blue cold → red warm)
+    // ================================================================
+    const COLOR_STOPS = [
+        [0.00, [5, 48, 97]],
+        [0.08, [33, 102, 172]],
+        [0.16, [67, 147, 195]],
+        [0.25, [106, 173, 213]],
+        [0.33, [146, 197, 222]],
+        [0.42, [209, 229, 240]],
+        [0.50, [242, 242, 242]],
+        [0.58, [253, 219, 199]],
+        [0.67, [244, 165, 130]],
+        [0.75, [220, 115, 80]],
+        [0.83, [214, 96, 77]],
+        [0.92, [178, 24, 43]],
+        [1.00, [103, 0, 31]]
+    ];
+
+    function buildColorLUT() {
+        const lut = new Uint8Array(256 * 4);  // 256 entries × RGBA
+        for (let i = 0; i < 255; i++) {
+            const t = i / 254;
+            // Find bracketing stops
+            let lo = COLOR_STOPS[0], hi = COLOR_STOPS[COLOR_STOPS.length - 1];
+            for (let s = 0; s < COLOR_STOPS.length - 1; s++) {
+                if (t >= COLOR_STOPS[s][0] && t <= COLOR_STOPS[s + 1][0]) {
+                    lo = COLOR_STOPS[s];
+                    hi = COLOR_STOPS[s + 1];
+                    break;
+                }
+            }
+            const range = hi[0] - lo[0];
+            const f = range > 0 ? (t - lo[0]) / range : 0;
+            const idx = i * 4;
+            lut[idx]     = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * f);
+            lut[idx + 1] = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * f);
+            lut[idx + 2] = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * f);
+            lut[idx + 3] = 255;
+        }
+        // 255 = nodata → transparent
+        lut[255 * 4] = 0;
+        lut[255 * 4 + 1] = 0;
+        lut[255 * 4 + 2] = 0;
+        lut[255 * 4 + 3] = 0;
+        return lut;
+    }
+
+    const COLOR_LUT = buildColorLUT();
+
+    // ================================================================
+    //  LEGEND
+    // ================================================================
+    function paintLegend() {
+        const canvas = document.getElementById('legend-bar');
+        const ctx = canvas.getContext('2d');
+        for (let y = 0; y < canvas.height; y++) {
+            const t = 1 - y / (canvas.height - 1);  // top = warm
+            const i = Math.round(t * 254);
+            const off = i * 4;
+            ctx.fillStyle = `rgb(${COLOR_LUT[off]},${COLOR_LUT[off+1]},${COLOR_LUT[off+2]})`;
+            ctx.fillRect(0, y, canvas.width, 1);
+        }
+    }
+
+    // ================================================================
+    //  LEAFLET MAP
+    // ================================================================
+    const map = L.map('map', {
+        center: [20, 0],
+        zoom: 2,
+        minZoom: 1,
+        maxZoom: 7,
+        zoomControl: true,
+        preferCanvas: true,
+        worldCopyJump: true
+    });
+
+    // Dark basemap
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Labels on top (separate layer so SST goes between base and labels)
+    const labelsPane = map.createPane('labels');
+    labelsPane.style.zIndex = 450;
+    labelsPane.style.pointerEvents = 'none';
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+        pane: 'labels',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
+
+    // ================================================================
+    //  CANVAS OVERLAY LAYER
+    // ================================================================
+    const SSTOverlay = L.Layer.extend({
+        initialize(options) {
+            L.setOptions(this, options);
+            this._data = null;
+            this._meta = null;
+            this._frame = 0;
+            this._opacity = 0.80;
+            // Offscreen canvas for data rendering
+            this._off = document.createElement('canvas');
+            this._offCtx = null;
+            // Current rendered frame cache
+            this._renderedFrame = -1;
+            this._imageData = null;
+        },
+
+        onAdd(map) {
+            this._map = map;
+            const pane = map.getPane('overlayPane');
+            this._canvas = L.DomUtil.create('canvas', 'leaflet-canvas-overlay', pane);
+            this._ctx = this._canvas.getContext('2d');
+
+            map.on('move viewreset zoom resize', this._reset, this);
+            this._reset();
+        },
+
+        onRemove(map) {
+            L.DomUtil.remove(this._canvas);
+            map.off('move viewreset zoom resize', this._reset, this);
+        },
+
+        setData(data, meta) {
+            this._data = data;
+            this._meta = meta;
+            this._off.width = meta.nlon;
+            this._off.height = meta.nlat;
+            this._offCtx = this._off.getContext('2d');
+            this._imageData = this._offCtx.createImageData(meta.nlon, meta.nlat);
+            this._renderedFrame = -1;
+        },
+
+        setFrame(f) {
+            this._frame = f;
+            this._renderData();
+            this._drawToMap();
+        },
+
+        setOpacity(v) {
+            this._opacity = v;
+            this._canvas.style.opacity = v;
+        },
+
+        _reset() {
+            const size = this._map.getSize();
+            const topLeft = this._map.containerPointToLayerPoint([0, 0]);
+            L.DomUtil.setPosition(this._canvas, topLeft);
+            this._canvas.width = size.x;
+            this._canvas.height = size.y;
+            this._canvas.style.opacity = this._opacity;
+            this._drawToMap();
+        },
+
+        _renderData() {
+            if (!this._data || this._renderedFrame === this._frame) return;
+            const { nlat, nlon } = this._meta;
+            const frameSize = nlat * nlon;
+            const offset = this._frame * frameSize;
+            const pixels = this._imageData.data;
+
+            for (let i = 0; i < frameSize; i++) {
+                const v = this._data[offset + i];
+                const li = v * 4;
+                const pi = i * 4;
+                pixels[pi]     = COLOR_LUT[li];
+                pixels[pi + 1] = COLOR_LUT[li + 1];
+                pixels[pi + 2] = COLOR_LUT[li + 2];
+                pixels[pi + 3] = COLOR_LUT[li + 3];
+            }
+
+            this._offCtx.putImageData(this._imageData, 0, 0);
+            this._renderedFrame = this._frame;
+        },
+
+        _drawToMap() {
+            if (!this._data || !this._meta || !this._ctx) return;
+            const ctx = this._ctx;
+            const w = this._canvas.width;
+            const h = this._canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const b = this._meta.bounds;
+            const nw = this._map.latLngToContainerPoint([b.north, b.west]);
+            const se = this._map.latLngToContainerPoint([b.south, b.east]);
+            const dw = se.x - nw.x;
+            const dh = se.y - nw.y;
+
+            // Smoothing off for crisp grid at low zoom, on for smooth at high zoom
+            const zoom = this._map.getZoom();
+            ctx.imageSmoothingEnabled = zoom > 3;
+            ctx.imageSmoothingQuality = 'high';
+
+            ctx.drawImage(this._off, nw.x, nw.y, dw, dh);
+
+            // Handle world wrap: draw copies left and right
+            const worldWidth = this._map.getPixelWorldBounds().getSize().x;
+            if (worldWidth) {
+                // Draw left copy
+                ctx.drawImage(this._off, nw.x - worldWidth, nw.y, dw, dh);
+                // Draw right copy
+                ctx.drawImage(this._off, nw.x + worldWidth, nw.y, dw, dh);
+            }
+        },
+
+        getValueAt(lat, lon) {
+            if (!this._data || !this._meta) return null;
+            const m = this._meta;
+
+            // Find nearest grid cell
+            // Lons are sorted ascending, lats sorted descending (north → south)
+            const lonStep = m.lons[1] - m.lons[0];
+            const latStep = m.lats[0] - m.lats[1]; // positive since north→south
+
+            const lonIdx = Math.round((lon - m.lons[0]) / lonStep);
+            const latIdx = Math.round((m.lats[0] - lat) / latStep);
+
+            if (lonIdx < 0 || lonIdx >= m.nlon || latIdx < 0 || latIdx >= m.nlat) return null;
+
+            const v = this._data[this._frame * m.nlat * m.nlon + latIdx * m.nlon + lonIdx];
+            if (v === NODATA) return null;
+
+            return (v / 254) * (SST_MAX - SST_MIN) + SST_MIN;
+        }
+    });
+
+    const sstLayer = new SSTOverlay();
+    sstLayer.addTo(map);
+
+    // ================================================================
+    //  DATA LOADING
+    // ================================================================
+    async function loadData() {
+        const status = document.getElementById('load-status');
+        const bar = document.getElementById('progress-bar');
+
+        // Load metadata
+        status.textContent = 'Loading metadata...';
+        const metaResp = await fetch(META_URL);
+        const meta = await metaResp.json();
+        bar.style.width = '5%';
+
+        // Load binary data with progress
+        status.textContent = 'Loading SST data...';
+        const dataResp = await fetch(DATA_URL);
+        const contentLength = +dataResp.headers.get('Content-Length') || 0;
+        const reader = dataResp.body.getReader();
+        const chunks = [];
+        let received = 0;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (contentLength) {
+                const pct = Math.min(95, 5 + (received / contentLength) * 90);
+                bar.style.width = pct + '%';
+                const mb = (received / 1048576).toFixed(1);
+                const total = (contentLength / 1048576).toFixed(1);
+                status.textContent = `Loading SST data... ${mb} / ${total} MB`;
+            }
+        }
+
+        // Combine chunks into a single Uint8Array
+        status.textContent = 'Processing...';
+        bar.style.width = '96%';
+        const combined = new Uint8Array(received);
+        let pos = 0;
+        for (const chunk of chunks) {
+            combined.set(chunk, pos);
+            pos += chunk.length;
+        }
+
+        bar.style.width = '100%';
+        status.textContent = 'Ready!';
+
+        return { data: combined, meta };
+    }
+
+    // ================================================================
+    //  ANIMATION ENGINE
+    // ================================================================
+    let meta = null;
+    let currentFrame = 0;
+    let isPlaying = false;
+    let looping = true;
+    let speedIdx = 1;  // 1× default
+    let lastFrameTime = 0;
+    let animFrameId = null;
+
+    function getFrameInterval() {
+        // Base interval at 1× speed: 80ms per frame (12.5 fps)
+        return 80 / SPEEDS[speedIdx];
+    }
+
+    function formatDate(timeStr) {
+        const [y, m] = timeStr.split('-');
+        const month = MONTH_NAMES[parseInt(m, 10) - 1];
+        return { month, year: y, full: `${month} ${y}` };
+    }
+
+    function updateDisplay() {
+        const d = formatDate(meta.times[currentFrame]);
+        document.getElementById('date-display').innerHTML =
+            `${d.month} <span class="year">${d.year}</span>`;
+        document.getElementById('time-slider').value = currentFrame;
+    }
+
+    function stepFrame(delta) {
+        let next = currentFrame + delta;
+        if (next >= meta.ntimes) {
+            if (looping) { next = 0; }
+            else { next = meta.ntimes - 1; stopAnim(); }
+        }
+        if (next < 0) {
+            next = looping ? meta.ntimes - 1 : 0;
+        }
+        currentFrame = next;
+        sstLayer.setFrame(currentFrame);
+        updateDisplay();
+    }
+
+    function animLoop(timestamp) {
+        if (!isPlaying) return;
+        if (timestamp - lastFrameTime >= getFrameInterval()) {
+            stepFrame(1);
+            lastFrameTime = timestamp;
+        }
+        animFrameId = requestAnimationFrame(animLoop);
+    }
+
+    function startAnim() {
+        isPlaying = true;
+        lastFrameTime = performance.now();
+        document.getElementById('btn-play').innerHTML = '&#9646;&#9646; Pause';
+        document.getElementById('btn-play').classList.add('playing');
+        animFrameId = requestAnimationFrame(animLoop);
+    }
+
+    function stopAnim() {
+        isPlaying = false;
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        document.getElementById('btn-play').innerHTML = '&#9654; Play';
+        document.getElementById('btn-play').classList.remove('playing');
+    }
+
+    // ================================================================
+    //  CONTROLS
+    // ================================================================
+    function setupControls() {
+        const slider = document.getElementById('time-slider');
+        slider.max = meta.ntimes - 1;
+        slider.value = 0;
+
+        slider.addEventListener('input', () => {
+            currentFrame = parseInt(slider.value, 10);
+            sstLayer.setFrame(currentFrame);
+            updateDisplay();
+        });
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            isPlaying ? stopAnim() : startAnim();
+        });
+
+        document.getElementById('btn-step-back').addEventListener('click', () => {
+            stopAnim();
+            stepFrame(-1);
+        });
+
+        document.getElementById('btn-step-fwd').addEventListener('click', () => {
+            stopAnim();
+            stepFrame(1);
+        });
+
+        const speedBtn = document.getElementById('btn-speed');
+        speedBtn.addEventListener('click', () => {
+            speedIdx = (speedIdx + 1) % SPEEDS.length;
+            speedBtn.textContent = SPEEDS[speedIdx] + '×';
+        });
+
+        const loopBtn = document.getElementById('btn-loop');
+        loopBtn.classList.add('active');
+        loopBtn.addEventListener('click', () => {
+            looping = !looping;
+            loopBtn.classList.toggle('active', looping);
+        });
+
+        const opSlider = document.getElementById('opacity-slider');
+        opSlider.addEventListener('input', () => {
+            const v = parseInt(opSlider.value, 10) / 100;
+            sstLayer.setOpacity(v);
+            document.getElementById('opacity-val').textContent = opSlider.value + '%';
+        });
+    }
+
+    // ================================================================
+    //  HOVER TOOLTIP
+    // ================================================================
+    function setupTooltip() {
+        const tooltip = document.getElementById('tooltip');
+        const mapEl = document.getElementById('map');
+
+        mapEl.addEventListener('mousemove', (e) => {
+            const latlng = map.containerPointToLatLng([e.clientX, e.clientY]);
+            let lon = latlng.lng;
+            // Normalize longitude
+            while (lon > 180) lon -= 360;
+            while (lon < -180) lon += 360;
+
+            const val = sstLayer.getValueAt(latlng.lat, lon);
+            if (val === null) {
+                tooltip.style.display = 'none';
+                return;
+            }
+
+            tooltip.querySelector('.temp').textContent = val.toFixed(1) + '°C';
+            tooltip.querySelector('.coord').textContent =
+                `${Math.abs(latlng.lat).toFixed(1)}°${latlng.lat >= 0 ? 'N' : 'S'}  ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'}`;
+
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 16) + 'px';
+            tooltip.style.top = (e.clientY + 16) + 'px';
+        });
+
+        mapEl.addEventListener('mouseout', () => {
+            tooltip.style.display = 'none';
+        });
+    }
+
+    // ================================================================
+    //  KEYBOARD SHORTCUTS
+    // ================================================================
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        switch (e.key) {
+            case ' ':
+                e.preventDefault();
+                isPlaying ? stopAnim() : startAnim();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                stopAnim();
+                stepFrame(1);
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                stopAnim();
+                stepFrame(-1);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                speedIdx = Math.min(speedIdx + 1, SPEEDS.length - 1);
+                document.getElementById('btn-speed').textContent = SPEEDS[speedIdx] + '×';
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                speedIdx = Math.max(speedIdx - 1, 0);
+                document.getElementById('btn-speed').textContent = SPEEDS[speedIdx] + '×';
+                break;
+        }
+    });
+
+    // ================================================================
+    //  INIT
+    // ================================================================
+    (async function init() {
+        paintLegend();
+
+        try {
+            const result = await loadData();
+            meta = result.meta;
+            sstLayer.setData(result.data, meta);
+            sstLayer.setFrame(0);
+            setupControls();
+            setupTooltip();
+            updateDisplay();
+
+            // Hide loading screen
+            setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+            }, 300);
+
+        } catch (err) {
+            document.getElementById('load-status').textContent = 'Error: ' + err.message;
+            console.error(err);
+        }
+    })();
+
+    </script>
+</body>
+</html>

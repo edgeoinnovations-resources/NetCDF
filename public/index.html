@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sea Surface Temperature Animation - NOAA ERSST v5</title>
+
+    <!-- ArcGIS JavaScript SDK -->
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/dark/main.css">
+    <script src="https://js.arcgis.com/4.28/"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a2e;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #map-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #viewDiv {
+            width: 100%;
+            height: 100%;
+        }
+
+        #sst-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.75;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px 30px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            min-width: 400px;
+            max-width: 90vw;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #time-display {
+            font-size: 24px;
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+
+        #slider-container {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #time-slider {
+            flex: 1;
+            height: 8px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(to right, #1565c0, #4fc3f7);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #time-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        #button-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            padding: 10px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        #play-btn {
+            background: #4fc3f7;
+            color: #000;
+        }
+
+        #play-btn:hover {
+            background: #29b6f6;
+        }
+
+        #play-btn.playing {
+            background: #ff7043;
+        }
+
+        #speed-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        #speed-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 20px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #info-panel h1 {
+            font-size: 18px;
+            margin-bottom: 5px;
+            color: #4fc3f7;
+        }
+
+        #info-panel p {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #legend-title {
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        #legend-gradient {
+            width: 30px;
+            height: 200px;
+            margin: 0 auto;
+            border-radius: 4px;
+        }
+
+        .legend-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 200px;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+
+        #legend-inner {
+            display: flex;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px 50px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        #loading h2 {
+            margin-bottom: 15px;
+            color: #4fc3f7;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #hover-info {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            display: none;
+            z-index: 100;
+        }
+
+        #opacity-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        #opacity-slider {
+            width: 100px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        #opacity-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="viewDiv"></div>
+        <canvas id="sst-canvas"></canvas>
+
+        <div id="info-panel">
+            <h1>Sea Surface Temperature</h1>
+            <p>NOAA ERSST v5 Monthly Mean (1854-2025)</p>
+        </div>
+
+        <div id="legend">
+            <div id="legend-title">SST (°C)</div>
+            <div id="legend-inner">
+                <div id="legend-gradient"></div>
+                <div class="legend-labels">
+                    <span>32°</span>
+                    <span>24°</span>
+                    <span>16°</span>
+                    <span>8°</span>
+                    <span>0°</span>
+                    <span>-2°</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls">
+            <div id="time-display">Loading...</div>
+            <div id="slider-container">
+                <span id="start-date">1854</span>
+                <input type="range" id="time-slider" min="0" max="100" value="0">
+                <span id="end-date">2025</span>
+            </div>
+            <div id="button-container">
+                <button id="play-btn" class="control-btn">▶ Play</button>
+                <button id="speed-btn" class="control-btn">1x Speed</button>
+            </div>
+            <div id="opacity-control">
+                <span>Overlay Opacity:</span>
+                <input type="range" id="opacity-slider" min="0" max="100" value="75">
+                <span id="opacity-value">75%</span>
+            </div>
+        </div>
+
+        <div id="hover-info"></div>
+
+        <div id="loading">
+            <h2>Loading SST Data</h2>
+            <div class="spinner"></div>
+            <p id="load-status">Initializing...</p>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let metadata = null;
+        let sstData = null;
+        let currentFrame = 0;
+        let isPlaying = false;
+        let playInterval = null;
+        let speeds = [1, 2, 4, 8];
+        let speedIndex = 0;
+        let map = null;
+        let view = null;
+
+        // Color scale (RdBu reversed - blue for cold, red for warm)
+        function getColor(value) {
+            if (value === -999 || value === null) return null;
+
+            // Value is stored as int * 100, convert back
+            const temp = value / 100;
+            const min = -2, max = 32;
+            const t = Math.max(0, Math.min(1, (temp - min) / (max - min)));
+
+            // Color stops for RdBu_r colorscale
+            const colors = [
+                [0.0, [5, 48, 97]],      // Dark blue
+                [0.1, [33, 102, 172]],
+                [0.2, [67, 147, 195]],
+                [0.3, [146, 197, 222]],
+                [0.4, [209, 229, 240]],
+                [0.5, [247, 247, 247]],  // White
+                [0.6, [253, 219, 199]],
+                [0.7, [244, 165, 130]],
+                [0.8, [214, 96, 77]],
+                [0.9, [178, 24, 43]],
+                [1.0, [103, 0, 31]]      // Dark red
+            ];
+
+            // Find color stops
+            let lower = colors[0], upper = colors[colors.length - 1];
+            for (let i = 0; i < colors.length - 1; i++) {
+                if (t >= colors[i][0] && t <= colors[i + 1][0]) {
+                    lower = colors[i];
+                    upper = colors[i + 1];
+                    break;
+                }
+            }
+
+            // Interpolate
+            const range = upper[0] - lower[0];
+            const localT = range > 0 ? (t - lower[0]) / range : 0;
+
+            const r = Math.round(lower[1][0] + (upper[1][0] - lower[1][0]) * localT);
+            const g = Math.round(lower[1][1] + (upper[1][1] - lower[1][1]) * localT);
+            const b = Math.round(lower[1][2] + (upper[1][2] - lower[1][2]) * localT);
+
+            return [r, g, b];
+        }
+
+        // Create legend gradient
+        function createLegendGradient() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 30;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+
+            for (let y = 0; y < 200; y++) {
+                const value = (1 - y / 199) * 34 - 2; // -2 to 32
+                const color = getColor(value * 100);
+                if (color) {
+                    ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+                    ctx.fillRect(0, y, 30, 1);
+                }
+            }
+
+            document.getElementById('legend-gradient').style.background =
+                `url(${canvas.toDataURL()})`;
+        }
+
+        // Load data
+        async function loadData() {
+            const loadStatus = document.getElementById('load-status');
+
+            try {
+                loadStatus.textContent = 'Loading metadata...';
+                const metaResponse = await fetch('data/metadata.json');
+                metadata = await metaResponse.json();
+
+                loadStatus.textContent = 'Loading SST data (this may take a moment)...';
+                const dataResponse = await fetch('data/sst_data.json');
+                const dataObj = await dataResponse.json();
+                sstData = dataObj.data;
+
+                loadStatus.textContent = 'Initializing map...';
+
+                // Update slider
+                document.getElementById('time-slider').max = metadata.times.length - 1;
+                document.getElementById('start-date').textContent = metadata.times[0].substring(0, 4);
+                document.getElementById('end-date').textContent = metadata.times[metadata.times.length - 1].substring(0, 4);
+
+                return true;
+            } catch (error) {
+                console.error('Error loading data:', error);
+                loadStatus.textContent = 'Error loading data: ' + error.message;
+                return false;
+            }
+        }
+
+        // Initialize ArcGIS map
+        require([
+            "esri/Map",
+            "esri/views/MapView",
+            "esri/Basemap"
+        ], function(Map, MapView, Basemap) {
+
+            async function init() {
+                // Load data first
+                const dataLoaded = await loadData();
+                if (!dataLoaded) return;
+
+                // Create map with oceans basemap
+                map = new Map({
+                    basemap: "oceans"
+                });
+
+                // Create view
+                view = new MapView({
+                    container: "viewDiv",
+                    map: map,
+                    center: [0, 20],
+                    zoom: 2,
+                    constraints: {
+                        minZoom: 1,
+                        maxZoom: 8
+                    }
+                });
+
+                // Wait for view to be ready
+                await view.when();
+
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+
+                // Setup canvas rendering
+                setupCanvas();
+                createLegendGradient();
+
+                // Initial render
+                renderFrame(0);
+
+                // Setup controls
+                setupControls();
+
+                // Update canvas on view change
+                view.watch(['extent', 'zoom', 'center'], () => {
+                    renderFrame(currentFrame);
+                });
+
+                // Handle resize
+                window.addEventListener('resize', () => {
+                    resizeCanvas();
+                    renderFrame(currentFrame);
+                });
+            }
+
+            init();
+        });
+
+        // Canvas setup
+        function setupCanvas() {
+            const canvas = document.getElementById('sst-canvas');
+            resizeCanvas();
+
+            // Hover handler
+            canvas.style.pointerEvents = 'none';
+            document.getElementById('viewDiv').addEventListener('mousemove', handleHover);
+            document.getElementById('viewDiv').addEventListener('mouseout', () => {
+                document.getElementById('hover-info').style.display = 'none';
+            });
+        }
+
+        function resizeCanvas() {
+            const canvas = document.getElementById('sst-canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // Render SST data on canvas
+        function renderFrame(frameIndex) {
+            if (!sstData || !metadata || !view) return;
+
+            const canvas = document.getElementById('sst-canvas');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const frameData = sstData[frameIndex];
+            const lons = metadata.lons;
+            const lats = metadata.lats;
+
+            // Get current view extent
+            const extent = view.extent;
+            if (!extent) return;
+
+            const xMin = extent.xmin;
+            const xMax = extent.xmax;
+            const yMin = extent.ymin;
+            const yMax = extent.ymax;
+
+            // Calculate pixel size for each grid cell
+            const lonStep = lons[1] - lons[0];
+            const latStep = lats[1] - lats[0];
+
+            // Create image data for faster rendering
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            // For each pixel, find the corresponding SST value
+            for (let py = 0; py < height; py++) {
+                for (let px = 0; px < width; px++) {
+                    // Convert pixel to map coordinates
+                    const mapPoint = view.toMap({ x: px, y: py });
+                    if (!mapPoint) continue;
+
+                    let lon = mapPoint.longitude;
+                    const lat = mapPoint.latitude;
+
+                    // Handle world wrap
+                    while (lon > 180) lon -= 360;
+                    while (lon < -180) lon += 360;
+
+                    // Find grid cell
+                    const lonIdx = Math.round((lon - lons[0]) / lonStep);
+                    const latIdx = Math.round((lat - lats[0]) / latStep);
+
+                    if (lonIdx < 0 || lonIdx >= lons.length || latIdx < 0 || latIdx >= lats.length) {
+                        continue;
+                    }
+
+                    const value = frameData[latIdx][lonIdx];
+                    const color = getColor(value);
+
+                    if (color) {
+                        const idx = (py * width + px) * 4;
+                        data[idx] = color[0];
+                        data[idx + 1] = color[1];
+                        data[idx + 2] = color[2];
+                        data[idx + 3] = 255;
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // Update time display
+            document.getElementById('time-display').textContent = formatTime(metadata.times[frameIndex]);
+            document.getElementById('time-slider').value = frameIndex;
+            currentFrame = frameIndex;
+        }
+
+        function formatTime(timeStr) {
+            const [year, month] = timeStr.split('-');
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${months[parseInt(month) - 1]} ${year}`;
+        }
+
+        // Handle hover
+        function handleHover(e) {
+            if (!view || !sstData || !metadata) return;
+
+            const mapPoint = view.toMap({ x: e.offsetX, y: e.offsetY });
+            if (!mapPoint) return;
+
+            let lon = mapPoint.longitude;
+            const lat = mapPoint.latitude;
+
+            while (lon > 180) lon -= 360;
+            while (lon < -180) lon += 360;
+
+            const lonStep = metadata.lons[1] - metadata.lons[0];
+            const latStep = metadata.lats[1] - metadata.lats[0];
+
+            const lonIdx = Math.round((lon - metadata.lons[0]) / lonStep);
+            const latIdx = Math.round((lat - metadata.lats[0]) / latStep);
+
+            if (lonIdx < 0 || lonIdx >= metadata.lons.length ||
+                latIdx < 0 || latIdx >= metadata.lats.length) {
+                document.getElementById('hover-info').style.display = 'none';
+                return;
+            }
+
+            const value = sstData[currentFrame][latIdx][lonIdx];
+
+            if (value === -999) {
+                document.getElementById('hover-info').style.display = 'none';
+                return;
+            }
+
+            const temp = (value / 100).toFixed(1);
+            const hoverInfo = document.getElementById('hover-info');
+            hoverInfo.innerHTML = `<strong>${temp}°C</strong><br>
+                                   Lat: ${lat.toFixed(1)}° Lon: ${lon.toFixed(1)}°`;
+            hoverInfo.style.display = 'block';
+            hoverInfo.style.left = (e.clientX + 15) + 'px';
+            hoverInfo.style.top = (e.clientY + 15) + 'px';
+        }
+
+        // Setup controls
+        function setupControls() {
+            const playBtn = document.getElementById('play-btn');
+            const speedBtn = document.getElementById('speed-btn');
+            const timeSlider = document.getElementById('time-slider');
+            const opacitySlider = document.getElementById('opacity-slider');
+
+            playBtn.addEventListener('click', togglePlay);
+            speedBtn.addEventListener('click', cycleSpeed);
+
+            timeSlider.addEventListener('input', (e) => {
+                renderFrame(parseInt(e.target.value));
+            });
+
+            opacitySlider.addEventListener('input', (e) => {
+                const opacity = parseInt(e.target.value) / 100;
+                document.getElementById('sst-canvas').style.opacity = opacity;
+                document.getElementById('opacity-value').textContent = e.target.value + '%';
+            });
+        }
+
+        function togglePlay() {
+            const playBtn = document.getElementById('play-btn');
+
+            if (isPlaying) {
+                clearInterval(playInterval);
+                playBtn.textContent = '▶ Play';
+                playBtn.classList.remove('playing');
+                isPlaying = false;
+            } else {
+                const interval = 100 / speeds[speedIndex];
+                playInterval = setInterval(() => {
+                    currentFrame = (currentFrame + 1) % metadata.times.length;
+                    renderFrame(currentFrame);
+                }, interval);
+                playBtn.textContent = '⏸ Pause';
+                playBtn.classList.add('playing');
+                isPlaying = true;
+            }
+        }
+
+        function cycleSpeed() {
+            speedIndex = (speedIndex + 1) % speeds.length;
+            document.getElementById('speed-btn').textContent = speeds[speedIndex] + 'x Speed';
+
+            if (isPlaying) {
+                clearInterval(playInterval);
+                const interval = 100 / speeds[speedIndex];
+                playInterval = setInterval(() => {
+                    currentFrame = (currentFrame + 1) % metadata.times.length;
+                    renderFrame(currentFrame);
+                }, interval);
+            }
+        }
+    </script>
+</body>
+</html>

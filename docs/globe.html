@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SST Globe — NOAA ERSST v5</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-dark: #050510;
+            --bg-panel: rgba(10, 14, 26, 0.88);
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: #4fc3f7;
+            --warm: #ff7043;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --radius: 12px;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh; width: 100vw;
+        }
+
+        canvas { display: block; }
+
+        /* ── Panels ────────────────────────────────── */
+        #header {
+            position: absolute; top: 16px; left: 16px; z-index: 100;
+            background: var(--bg-panel); backdrop-filter: blur(20px);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 16px 20px; max-width: 340px;
+        }
+        #header h1 { font-size: 17px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+        #header .subtitle { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+
+        #legend {
+            position: absolute; top: 16px; right: 16px; z-index: 100;
+            background: var(--bg-panel); backdrop-filter: blur(20px);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 14px 16px; width: 70px;
+        }
+        #legend .legend-title {
+            font-size: 11px; font-weight: 500; text-align: center;
+            margin-bottom: 8px; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        #legend-bar { width: 24px; height: 220px; border-radius: 4px; margin: 0 auto; }
+        #legend .legend-inner { display: flex; gap: 6px; justify-content: center; }
+        #legend .legend-labels {
+            display: flex; flex-direction: column; justify-content: space-between;
+            height: 220px; font-size: 11px; color: var(--text-dim);
+        }
+
+        /* ── Controls ──────────────────────────────── */
+        #controls {
+            position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+            z-index: 100; background: var(--bg-panel); backdrop-filter: blur(20px);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 18px 24px 14px; min-width: 520px; max-width: 90vw;
+        }
+        #date-display {
+            text-align: center; font-size: 28px; font-weight: 700; color: #fff;
+            margin-bottom: 12px; font-variant-numeric: tabular-nums; letter-spacing: -0.5px;
+        }
+        #date-display .year { color: var(--accent); }
+
+        .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .slider-row .label { font-size: 11px; color: var(--text-dim); min-width: 32px; font-variant-numeric: tabular-nums; }
+
+        input[type="range"] {
+            -webkit-appearance: none; appearance: none; flex: 1; height: 6px;
+            border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer; outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+            background: #fff; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+            transition: transform 0.1s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        #time-slider::-webkit-slider-runnable-track {
+            background: linear-gradient(to right, #1565c0, var(--accent), var(--warm));
+            height: 6px; border-radius: 3px;
+        }
+
+        .btn-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn {
+            border: none; border-radius: 8px; cursor: pointer; font-family: inherit;
+            font-weight: 500; transition: all 0.15s ease; display: flex; align-items: center; gap: 6px;
+        }
+        .btn-play { background: var(--accent); color: #000; font-size: 14px; padding: 8px 20px; }
+        .btn-play:hover { background: #29b6f6; }
+        .btn-play.playing { background: var(--warm); }
+        .btn-play.playing:hover { background: #ff5722; }
+        .btn-sm {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text); font-size: 12px; padding: 6px 14px;
+        }
+        .btn-sm:hover { background: rgba(255,255,255,0.12); }
+        .btn-sm.active { background: rgba(79,195,247,0.15); border-color: var(--accent); color: var(--accent); }
+        .divider { width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+
+        .opacity-row {
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; margin-top: 10px; font-size: 11px; color: var(--text-dim);
+        }
+        #opacity-slider { width: 100px; height: 4px; }
+
+        /* ── View toggle ───────────────────────────── */
+        #view-toggle {
+            position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+            z-index: 100; display: flex; gap: 2px;
+            background: var(--bg-panel); backdrop-filter: blur(20px);
+            border: 1px solid var(--border); border-radius: 8px; padding: 3px;
+        }
+        .view-btn {
+            padding: 6px 16px; border: none; border-radius: 6px;
+            font-family: inherit; font-size: 12px; font-weight: 500;
+            cursor: pointer; transition: all 0.15s ease;
+            background: transparent; color: var(--text-dim);
+            text-decoration: none; display: flex; align-items: center; gap: 5px;
+        }
+        .view-btn.active { background: rgba(79,195,247,0.15); color: var(--accent); }
+        .view-btn:hover:not(.active) { color: #fff; }
+
+        /* ── Tooltip ───────────────────────────────── */
+        #tooltip {
+            position: absolute; z-index: 200; background: rgba(0,0,0,0.92);
+            padding: 8px 12px; border-radius: 8px; font-size: 13px;
+            pointer-events: none; display: none;
+            border: 1px solid rgba(255,255,255,0.1); white-space: nowrap;
+        }
+        #tooltip .temp { font-weight: 600; font-size: 15px; }
+        #tooltip .coord { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+        /* ── Loading ───────────────────────────────── */
+        #loading {
+            position: fixed; inset: 0; z-index: 9999; background: var(--bg-dark);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.6s ease;
+        }
+        #loading.hidden { opacity: 0; pointer-events: none; }
+        #loading h2 { font-size: 22px; font-weight: 600; margin-bottom: 6px; color: #fff; }
+        #loading .sub { font-size: 13px; color: var(--text-dim); margin-bottom: 24px; }
+        .progress-container { width: 300px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #1565c0, var(--accent)); border-radius: 3px; width: 0%; transition: width 0.2s ease; }
+        #load-status { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+        @media (max-width: 600px) {
+            #controls { min-width: 0; width: calc(100vw - 32px); padding: 14px 16px 10px; }
+            #date-display { font-size: 22px; }
+            #header { max-width: calc(100vw - 100px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <h2>Sea Surface Temperature</h2>
+        <div class="sub">NOAA ERSST v5 &middot; 3D Globe</div>
+        <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
+        <div id="load-status">Initializing...</div>
+    </div>
+
+    <div id="view-toggle">
+        <a href="index.html" class="view-btn">&#9634; 2D Map</a>
+        <a href="globe.html" class="view-btn active">&#9673; 3D Globe</a>
+    </div>
+
+    <div id="header">
+        <h1>Sea Surface Temperature</h1>
+        <div class="subtitle">NOAA ERSST v5 Monthly Mean &middot; 2&deg; Global Grid<br>171 years of ocean temperature data</div>
+    </div>
+
+    <div id="legend">
+        <div class="legend-title">SST &deg;C</div>
+        <div class="legend-inner">
+            <canvas id="legend-bar" width="24" height="220"></canvas>
+            <div class="legend-labels">
+                <span>32&deg;</span><span>24&deg;</span><span>16&deg;</span>
+                <span>8&deg;</span><span>0&deg;</span><span>-2&deg;</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div id="date-display"></div>
+        <div class="slider-row">
+            <span class="label">1854</span>
+            <input type="range" id="time-slider" min="0" max="100" value="0">
+            <span class="label">2025</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-play" id="btn-play">&#9654; Play</button>
+            <div class="divider"></div>
+            <button class="btn btn-sm" id="btn-step-back" title="Previous frame">&#9664;&#9664;</button>
+            <button class="btn btn-sm" id="btn-step-fwd" title="Next frame">&#9654;&#9654;</button>
+            <div class="divider"></div>
+            <button class="btn btn-sm" id="btn-speed" data-idx="1">1&times;</button>
+            <button class="btn btn-sm" id="btn-loop" title="Loop">&#8635; Loop</button>
+        </div>
+        <div class="opacity-row">
+            <span>Overlay</span>
+            <input type="range" id="opacity-slider" min="5" max="100" value="90">
+            <span id="opacity-val">90%</span>
+        </div>
+    </div>
+
+    <div id="tooltip"><div class="temp"></div><div class="coord"></div></div>
+
+    <!-- Three.js via import map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ================================================================
+    //  CONFIG
+    // ================================================================
+    const DATA_URL  = 'data/sst_data.bin';
+    const META_URL  = 'data/metadata.json';
+    const SST_MIN   = -2, SST_MAX = 32, NODATA = 255;
+    const SPEEDS    = [0.5, 1, 2, 4, 8, 16];
+    const MONTHS    = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'];
+
+    const GLOBE_RADIUS  = 5;
+    const TEX_W = 1024, TEX_H = 512;   // Texture resolution (power of 2)
+
+    // ================================================================
+    //  COLOR LUT
+    // ================================================================
+    const COLOR_STOPS = [
+        [0.00,[5,48,97]],[0.08,[33,102,172]],[0.16,[67,147,195]],
+        [0.25,[106,173,213]],[0.33,[146,197,222]],[0.42,[209,229,240]],
+        [0.50,[242,242,242]],[0.58,[253,219,199]],[0.67,[244,165,130]],
+        [0.75,[220,115,80]],[0.83,[214,96,77]],[0.92,[178,24,43]],[1.00,[103,0,31]]
+    ];
+
+    function buildLUT() {
+        const lut = new Uint8Array(256 * 4);
+        for (let i = 0; i < 255; i++) {
+            const t = i / 254;
+            let lo = COLOR_STOPS[0], hi = COLOR_STOPS[COLOR_STOPS.length - 1];
+            for (let s = 0; s < COLOR_STOPS.length - 1; s++) {
+                if (t >= COLOR_STOPS[s][0] && t <= COLOR_STOPS[s + 1][0]) {
+                    lo = COLOR_STOPS[s]; hi = COLOR_STOPS[s + 1]; break;
+                }
+            }
+            const f = (hi[0] - lo[0]) > 0 ? (t - lo[0]) / (hi[0] - lo[0]) : 0;
+            const idx = i * 4;
+            lut[idx]   = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * f);
+            lut[idx+1] = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * f);
+            lut[idx+2] = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * f);
+            lut[idx+3] = 255;
+        }
+        // 255 = nodata → transparent
+        lut[255*4]=0; lut[255*4+1]=0; lut[255*4+2]=0; lut[255*4+3]=0;
+        return lut;
+    }
+    const LUT = buildLUT();
+
+    // Legend
+    (function paintLegend() {
+        const c = document.getElementById('legend-bar'), ctx = c.getContext('2d');
+        for (let y = 0; y < c.height; y++) {
+            const i = Math.round((1 - y / (c.height - 1)) * 254), o = i * 4;
+            ctx.fillStyle = `rgb(${LUT[o]},${LUT[o+1]},${LUT[o+2]})`;
+            ctx.fillRect(0, y, c.width, 1);
+        }
+    })();
+
+    // ================================================================
+    //  THREE.JS SCENE
+    // ================================================================
+    const scene    = new THREE.Scene();
+    const camera   = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000);
+    camera.position.set(0, 3, 13);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setClearColor(0x050510);
+    document.body.prepend(renderer.domElement);
+
+    // Controls
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping  = true;
+    orbit.dampingFactor  = 0.06;
+    orbit.autoRotate     = true;
+    orbit.autoRotateSpeed = 0.35;
+    orbit.minDistance     = 7;
+    orbit.maxDistance     = 30;
+    orbit.enablePan       = false;
+
+    // ── Stars ──
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(4000 * 3);
+    for (let i = 0; i < starPos.length; i += 3) {
+        const r = 200 + Math.random() * 300;
+        const theta = Math.random() * Math.PI * 2;
+        const phi   = Math.acos(2 * Math.random() - 1);
+        starPos[i]   = r * Math.sin(phi) * Math.cos(theta);
+        starPos[i+1] = r * Math.sin(phi) * Math.sin(theta);
+        starPos[i+2] = r * Math.cos(phi);
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+        color: 0xffffff, size: 0.4, sizeAttenuation: true
+    })));
+
+    // ── Globe base (dark sphere for land) ──
+    const landMat = new THREE.MeshBasicMaterial({ color: 0x0d1117 });
+    const globeBase = new THREE.Mesh(
+        new THREE.SphereGeometry(GLOBE_RADIUS * 0.998, 96, 64),
+        landMat
+    );
+    scene.add(globeBase);
+
+    // ── SST texture sphere ──
+    const texCanvas = document.createElement('canvas');
+    texCanvas.width  = TEX_W;
+    texCanvas.height = TEX_H;
+    const texCtx = texCanvas.getContext('2d');
+
+    const globeTexture = new THREE.CanvasTexture(texCanvas);
+    globeTexture.minFilter = THREE.LinearFilter;
+    globeTexture.magFilter = THREE.LinearFilter;
+    globeTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    const sstMat = new THREE.MeshBasicMaterial({
+        map: globeTexture, transparent: true, depthWrite: false
+    });
+    const sstSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(GLOBE_RADIUS, 96, 64),
+        sstMat
+    );
+    scene.add(sstSphere);
+
+    // ── Atmosphere glow ──
+    const atmosMat = new THREE.ShaderMaterial({
+        vertexShader: `
+            varying vec3 vWorldPos;
+            varying vec3 vNormal;
+            void main() {
+                vNormal   = normalize(normalMatrix * normal);
+                vWorldPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vWorldPos;
+            varying vec3 vNormal;
+            void main() {
+                vec3 viewDir  = normalize(-vWorldPos);
+                float rim     = 1.0 - abs(dot(viewDir, vNormal));
+                float intensity = pow(rim, 3.0) * 0.9;
+                gl_FragColor  = vec4(0.35, 0.6, 1.0, intensity * 0.55);
+            }
+        `,
+        blending:    THREE.AdditiveBlending,
+        side:        THREE.BackSide,
+        transparent: true,
+        depthWrite:  false
+    });
+    scene.add(new THREE.Mesh(
+        new THREE.SphereGeometry(GLOBE_RADIUS * 1.18, 64, 64), atmosMat
+    ));
+
+    // Subtle ambient light (for any future MeshStandardMaterial use)
+    scene.add(new THREE.AmbientLight(0xffffff, 1));
+
+    // ================================================================
+    //  DATA LOADING
+    // ================================================================
+    async function loadData() {
+        const status = document.getElementById('load-status');
+        const bar    = document.getElementById('progress-bar');
+
+        status.textContent = 'Loading metadata...';
+        const metaResp = await fetch(META_URL);
+        const meta = await metaResp.json();
+        bar.style.width = '5%';
+
+        status.textContent = 'Loading SST data...';
+        const dataResp = await fetch(DATA_URL);
+        const contentLength = +dataResp.headers.get('Content-Length') || 0;
+        const reader = dataResp.body.getReader();
+        const chunks = [];
+        let received = 0;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (contentLength) {
+                const pct = Math.min(95, 5 + (received / contentLength) * 90);
+                bar.style.width = pct + '%';
+                status.textContent = `Loading SST data... ${(received/1048576).toFixed(1)} / ${(contentLength/1048576).toFixed(1)} MB`;
+            }
+        }
+
+        status.textContent = 'Processing...';
+        bar.style.width = '96%';
+        const combined = new Uint8Array(received);
+        let pos = 0;
+        for (const c of chunks) { combined.set(c, pos); pos += c.length; }
+
+        bar.style.width = '100%';
+        status.textContent = 'Ready!';
+        return { data: combined, meta };
+    }
+
+    // ================================================================
+    //  TEXTURE RENDERING
+    // ================================================================
+    let sstData = null, meta = null;
+    // Offscreen canvas at native data resolution
+    const offCanvas = document.createElement('canvas');
+    let offCtx = null, imageData = null;
+    let renderedFrame = -1;
+
+    // Precomputed mapping from data grid → texture coordinates
+    let dataTexLeft, dataTexTop, dataTexW, dataTexH;
+
+    function initTextureMapping(m) {
+        offCanvas.width  = m.nlon;
+        offCanvas.height = m.nlat;
+        offCtx = offCanvas.getContext('2d');
+        imageData = offCtx.createImageData(m.nlon, m.nlat);
+
+        // Data lon range → texture x; Data lat range → texture y
+        const lonMin = m.lons[0], lonMax = m.lons[m.nlon - 1];
+        const latMax = m.lats[0], latMin = m.lats[m.nlat - 1]; // north to south
+
+        dataTexLeft = ((lonMin + 180) / 360) * TEX_W;
+        const dataTexRight = ((lonMax + 180) / 360) * TEX_W;
+        dataTexTop  = ((90 - latMax) / 180) * TEX_H;
+        const dataTexBot = ((90 - latMin) / 180) * TEX_H;
+        dataTexW = dataTexRight - dataTexLeft;
+        dataTexH = dataTexBot - dataTexTop;
+    }
+
+    function renderFrameToTexture(frameIdx) {
+        if (!sstData) return;
+        const { nlat, nlon } = meta;
+        const frameSize = nlat * nlon;
+        const offset = frameIdx * frameSize;
+        const px = imageData.data;
+
+        // Build offscreen image from LUT
+        for (let i = 0; i < frameSize; i++) {
+            const v  = sstData[offset + i];
+            const li = v * 4, pi = i * 4;
+            px[pi]   = LUT[li];
+            px[pi+1] = LUT[li+1];
+            px[pi+2] = LUT[li+2];
+            px[pi+3] = LUT[li+3];
+        }
+        offCtx.putImageData(imageData, 0, 0);
+
+        // Paint onto texture canvas
+        texCtx.clearRect(0, 0, TEX_W, TEX_H);
+        texCtx.imageSmoothingEnabled = true;
+        texCtx.imageSmoothingQuality = 'high';
+        texCtx.drawImage(offCanvas, dataTexLeft, dataTexTop, dataTexW, dataTexH);
+
+        globeTexture.needsUpdate = true;
+        renderedFrame = frameIdx;
+    }
+
+    // ================================================================
+    //  SST VALUE LOOKUP VIA RAYCASTING
+    // ================================================================
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    function getValueAtMouse(clientX, clientY) {
+        if (!sstData || !meta) return null;
+
+        mouse.x =  (clientX / innerWidth) * 2 - 1;
+        mouse.y = -(clientY / innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+
+        const hits = raycaster.intersectObject(sstSphere);
+        if (hits.length === 0) return null;
+
+        const p = hits[0].point.clone().normalize();
+        const lat =  Math.asin(p.y) * (180 / Math.PI);
+        let   lon = -Math.atan2(-p.z, p.x) * (180 / Math.PI) + 90;
+        // Normalize to -180..180
+        if (lon > 180) lon -= 360;
+        if (lon < -180) lon += 360;
+
+        // Nearest grid cell
+        const m = meta;
+        const lonStep = m.lons[1] - m.lons[0];
+        const latStep = m.lats[0] - m.lats[1];
+        const lonIdx = Math.round((lon - m.lons[0]) / lonStep);
+        const latIdx = Math.round((m.lats[0] - lat) / latStep);
+
+        if (lonIdx < 0 || lonIdx >= m.nlon || latIdx < 0 || latIdx >= m.nlat) return null;
+
+        const v = sstData[currentFrame * m.nlat * m.nlon + latIdx * m.nlon + lonIdx];
+        if (v === NODATA) return null;
+
+        const temp = (v / 254) * (SST_MAX - SST_MIN) + SST_MIN;
+        return { temp, lat, lon };
+    }
+
+    // ================================================================
+    //  ANIMATION STATE
+    // ================================================================
+    let currentFrame = 0, isPlaying = false, looping = true, speedIdx = 1;
+    let lastStepTime = 0;
+    let sstOpacity = 0.9;
+
+    function getInterval() { return 80 / SPEEDS[speedIdx]; }
+
+    function formatDate(s) {
+        const [y, m] = s.split('-');
+        return { month: MONTHS[parseInt(m, 10) - 1], year: y };
+    }
+
+    function updateDisplay() {
+        const d = formatDate(meta.times[currentFrame]);
+        document.getElementById('date-display').innerHTML = `${d.month} <span class="year">${d.year}</span>`;
+        document.getElementById('time-slider').value = currentFrame;
+    }
+
+    function stepFrame(delta) {
+        let next = currentFrame + delta;
+        if (next >= meta.ntimes) { if (looping) next = 0; else { next = meta.ntimes - 1; stopAnim(); } }
+        if (next < 0) next = looping ? meta.ntimes - 1 : 0;
+        currentFrame = next;
+        renderFrameToTexture(currentFrame);
+        updateDisplay();
+    }
+
+    function startAnim() {
+        isPlaying = true;
+        lastStepTime = performance.now();
+        document.getElementById('btn-play').innerHTML = '&#9646;&#9646; Pause';
+        document.getElementById('btn-play').classList.add('playing');
+    }
+    function stopAnim() {
+        isPlaying = false;
+        document.getElementById('btn-play').innerHTML = '&#9654; Play';
+        document.getElementById('btn-play').classList.remove('playing');
+    }
+
+    // ================================================================
+    //  CONTROLS
+    // ================================================================
+    function setupControls() {
+        const slider = document.getElementById('time-slider');
+        slider.max = meta.ntimes - 1;
+        slider.value = 0;
+
+        slider.addEventListener('input', () => {
+            currentFrame = parseInt(slider.value, 10);
+            renderFrameToTexture(currentFrame);
+            updateDisplay();
+        });
+
+        document.getElementById('btn-play').addEventListener('click', () => isPlaying ? stopAnim() : startAnim());
+        document.getElementById('btn-step-back').addEventListener('click', () => { stopAnim(); stepFrame(-1); });
+        document.getElementById('btn-step-fwd').addEventListener('click',  () => { stopAnim(); stepFrame(1);  });
+
+        const speedBtn = document.getElementById('btn-speed');
+        speedBtn.addEventListener('click', () => {
+            speedIdx = (speedIdx + 1) % SPEEDS.length;
+            speedBtn.textContent = SPEEDS[speedIdx] + '\u00d7';
+        });
+
+        const loopBtn = document.getElementById('btn-loop');
+        loopBtn.classList.add('active');
+        loopBtn.addEventListener('click', () => { looping = !looping; loopBtn.classList.toggle('active', looping); });
+
+        const opSlider = document.getElementById('opacity-slider');
+        opSlider.addEventListener('input', () => {
+            sstOpacity = parseInt(opSlider.value, 10) / 100;
+            sstMat.opacity = sstOpacity;
+            document.getElementById('opacity-val').textContent = opSlider.value + '%';
+        });
+    }
+
+    // Tooltip
+    function setupTooltip() {
+        const tip = document.getElementById('tooltip');
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            const result = getValueAtMouse(e.clientX, e.clientY);
+            if (!result) { tip.style.display = 'none'; return; }
+            tip.querySelector('.temp').textContent = result.temp.toFixed(1) + '\u00b0C';
+            tip.querySelector('.coord').textContent =
+                `${Math.abs(result.lat).toFixed(1)}\u00b0${result.lat >= 0 ? 'N' : 'S'}  ` +
+                `${Math.abs(result.lon).toFixed(1)}\u00b0${result.lon >= 0 ? 'E' : 'W'}`;
+            tip.style.display = 'block';
+            tip.style.left = (e.clientX + 16) + 'px';
+            tip.style.top  = (e.clientY + 16) + 'px';
+        });
+        renderer.domElement.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    }
+
+    // Keyboard
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        switch (e.key) {
+            case ' ':          e.preventDefault(); isPlaying ? stopAnim() : startAnim(); break;
+            case 'ArrowRight': e.preventDefault(); stopAnim(); stepFrame(1);  break;
+            case 'ArrowLeft':  e.preventDefault(); stopAnim(); stepFrame(-1); break;
+            case 'ArrowUp':    e.preventDefault(); speedIdx = Math.min(speedIdx + 1, SPEEDS.length - 1);
+                               document.getElementById('btn-speed').textContent = SPEEDS[speedIdx] + '\u00d7'; break;
+            case 'ArrowDown':  e.preventDefault(); speedIdx = Math.max(speedIdx - 1, 0);
+                               document.getElementById('btn-speed').textContent = SPEEDS[speedIdx] + '\u00d7'; break;
+        }
+    });
+
+    // ================================================================
+    //  RESIZE
+    // ================================================================
+    window.addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    // ================================================================
+    //  RENDER LOOP
+    // ================================================================
+    function animate(now) {
+        requestAnimationFrame(animate);
+
+        // Advance SST frame
+        if (isPlaying && now - lastStepTime >= getInterval()) {
+            stepFrame(1);
+            lastStepTime = now;
+        }
+
+        // Keep SST sphere in sync with base rotation
+        sstSphere.rotation.copy(globeBase.rotation);
+
+        orbit.update();
+        renderer.render(scene, camera);
+    }
+
+    // ================================================================
+    //  INIT
+    // ================================================================
+    (async function init() {
+        try {
+            const result = await loadData();
+            sstData = result.data;
+            meta    = result.meta;
+
+            initTextureMapping(meta);
+            renderFrameToTexture(0);
+            setupControls();
+            setupTooltip();
+            updateDisplay();
+
+            setTimeout(() => document.getElementById('loading').classList.add('hidden'), 300);
+
+            requestAnimationFrame(animate);
+        } catch (err) {
+            document.getElementById('load-status').textContent = 'Error: ' + err.message;
+            console.error(err);
+        }
+    })();
+
+    </script>
+</body>
+</html>

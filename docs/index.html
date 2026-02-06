@@ -356,6 +356,47 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* ── View toggle ────────────────────────────── */
+        #view-toggle {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            gap: 2px;
+            background: var(--bg-panel);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .view-btn {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            background: transparent;
+            color: var(--text-dim);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .view-btn.active {
+            background: rgba(79,195,247,0.15);
+            color: var(--accent);
+        }
+
+        .view-btn:hover:not(.active) { color: #fff; }
+
         /* ── Responsive ─────────────────────────────── */
         @media (max-width: 600px) {
             #controls { min-width: 0; width: calc(100vw - 32px); padding: 14px 16px 10px; }
@@ -374,6 +415,12 @@
             <div class="progress-bar" id="progress-bar"></div>
         </div>
         <div id="load-status">Initializing...</div>
+    </div>
+
+    <!-- View Toggle -->
+    <div id="view-toggle">
+        <a href="index.html" class="view-btn active">&#9634; 2D Map</a>
+        <a href="globe.html" class="view-btn">&#9673; 3D Globe</a>
     </div>
 
     <!-- Map -->
